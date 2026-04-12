@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 
-from dotenv import load_dotenv
 from fastapi import FastAPI
 
 from app.api.routes import create_api_router, mount_slack_handler
@@ -11,8 +10,6 @@ from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 
 from app.slack.bolt_app import create_bolt_app, resolve_bot_user_id
 from app.utils.logging import setup_logging
-
-load_dotenv()
 
 settings = get_settings()
 setup_logging(settings.log_level)

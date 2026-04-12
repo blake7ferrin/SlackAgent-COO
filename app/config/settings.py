@@ -1,14 +1,23 @@
+import os
 from functools import lru_cache
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _env_file() -> str | None:
+    """Disable reading `.env` when LOAD_DOTENV=0 (e.g. Doppler-only or strict prod)."""
+    v = os.getenv("LOAD_DOTENV", "1").lower()
+    if v in ("0", "false", "no"):
+        return None
+    return ".env"
+
+
 class Settings(BaseSettings):
     """Application configuration from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_env_file(),
         env_file_encoding="utf-8",
         extra="ignore",
     )
