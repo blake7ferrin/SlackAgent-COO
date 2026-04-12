@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from slack_bolt.async_app import AsyncApp
@@ -13,6 +14,10 @@ from app.grok.run_trace import GrokRunTrace
 from app.services.context_builder import ContextBuilder
 from app.services.slack_replier import SlackReplyService
 from app.services.slack_reply_format import SlackReplyMode, format_slack_reply
+from app.services.report_slack_reply import (
+    format_generate_report_completed_body,
+    format_generate_report_failed_body,
+)
 from app.services.thread_readiness import assess_thread_readiness
 from app.slack.dedup import RecentDedup
 from app.slack.normalize import enrich_file_shared, normalized_from_message_event
@@ -110,23 +115,47 @@ class OrchestrationPipeline:
         )
 
         trace = GrokRunTrace()
-        reply, trace = await self._orchestrator.run(thread=thread, trace=trace)
+        try:
+            reply, trace = await asyncio.wait_for(
+                self._orchestrator.run(thread=thread, trace=trace),
+                timeout=float(self._settings.orchestration_timeout_seconds),
+            )
+        except asyncio.TimeoutError:
+            trace.timed_out = True
+            logger.warning(
+                "orchestration_timeout channel=%s thread_ts=%s limit_s=%s",
+                norm.channel_id,
+                thread_ts,
+                self._settings.orchestration_timeout_seconds,
+            )
+            reply = (
+                "This request took too long and timed out. "
+                "Please try again with a shorter thread or fewer attachments."
+            )
 
         rl = reply.lower()
         if "generate_report" in trace.tools_called and trace.generate_report_result is not None:
             gr = trace.generate_report_result
             outcome_ok = bool(gr.get("ok"))
             mode = SlackReplyMode.OUTCOME
+            if outcome_ok:
+                reply = format_generate_report_completed_body(gr)
+            else:
+                reply = format_generate_report_failed_body(gr)
         elif "request_missing_data" in trace.tools_called:
             mode = SlackReplyMode.MISSING_INFORMATION
             outcome_ok = None
         elif trace.tools_called and trace.last_tool_ok is False:
             mode = SlackReplyMode.OUTCOME
             outcome_ok = False
-        elif not trace.tools_called and (
-            "could not reach the ai service" in rl
-            or "did not get a usable response" in rl
-            or "maximum number of tool steps" in rl
+        elif trace.timed_out or (
+            not trace.tools_called
+            and (
+                "could not reach the ai service" in rl
+                or "did not get a usable response" in rl
+                or "maximum number of tool steps" in rl
+                or "timed out" in rl
+            )
         ):
             mode = SlackReplyMode.OUTCOME
             outcome_ok = False

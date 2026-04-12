@@ -3,9 +3,11 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from openai import APIError, AsyncOpenAI, OpenAIError
+import httpx
+from openai import APIError, APITimeoutError, AsyncOpenAI, OpenAIError
 
 from app.config.settings import Settings
+from app.grok.errors import GrokTimeoutError
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +23,11 @@ class GrokClient:
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        timeout = httpx.Timeout(float(settings.grok_request_timeout_seconds))
         self._client = AsyncOpenAI(
             api_key=settings.xai_api_key.get_secret_value(),
             base_url=settings.xai_base_url,
+            timeout=timeout,
         )
 
     @property
@@ -50,6 +54,9 @@ class GrokClient:
                 tool_choice=tool_choice,
                 temperature=temperature,
             )
+        except APITimeoutError:
+            logger.warning("grok_request_timeout")
+            raise GrokTimeoutError("Grok API request timed out") from None
         except (OpenAIError, APIError) as e:
             logger.exception("grok_request_failed error=%s", type(e).__name__)
             raise

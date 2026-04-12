@@ -25,6 +25,7 @@ class ThreadReadiness:
     has_usable_notes: bool
     has_https_images: bool
     user_message: str
+    reason: str  # ok | no_notes_no_images | images_only_no_context
 
 
 def _normalize_user_text(text: str) -> str:
@@ -69,11 +70,17 @@ def assess_thread_readiness(thread: ThreadContext) -> ThreadReadiness:
             "What system or issue are we documenting?"
         )
         logger.info(
-            "thread_readiness fail reason=no_notes_no_images channel=%s thread_ts=%s",
-            thread.channel_id,
-            thread.thread_ts,
+            "readiness_outcome %s",
+            {
+                "ok": False,
+                "reason": "no_notes_no_images",
+                "channel_id": thread.channel_id,
+                "thread_ts": thread.thread_ts,
+                "has_usable_notes": False,
+                "has_https_images": False,
+            },
         )
-        return ThreadReadiness(False, False, False, msg)
+        return ThreadReadiness(False, False, False, msg, "no_notes_no_images")
 
     if has_images and not usable:
         msg = (
@@ -81,17 +88,27 @@ def assess_thread_readiness(thread: ThreadContext) -> ThreadReadiness:
             "what’s wrong (if anything), and customer or site name if you have it?"
         )
         logger.info(
-            "thread_readiness fail reason=images_only_no_context channel=%s thread_ts=%s",
-            thread.channel_id,
-            thread.thread_ts,
+            "readiness_outcome %s",
+            {
+                "ok": False,
+                "reason": "images_only_no_context",
+                "channel_id": thread.channel_id,
+                "thread_ts": thread.thread_ts,
+                "has_usable_notes": False,
+                "has_https_images": True,
+            },
         )
-        return ThreadReadiness(False, True, True, msg)
+        return ThreadReadiness(False, True, True, msg, "images_only_no_context")
 
     logger.info(
-        "thread_readiness ok channel=%s thread_ts=%s usable_notes=%s images=%s",
-        thread.channel_id,
-        thread.thread_ts,
-        usable,
-        has_images,
+        "readiness_outcome %s",
+        {
+            "ok": True,
+            "reason": "ok",
+            "channel_id": thread.channel_id,
+            "thread_ts": thread.thread_ts,
+            "has_usable_notes": usable,
+            "has_https_images": has_images,
+        },
     )
-    return ThreadReadiness(True, usable, has_images, "")
+    return ThreadReadiness(True, usable, has_images, "", "ok")

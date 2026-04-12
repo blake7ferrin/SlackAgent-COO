@@ -17,7 +17,7 @@ app/
   api/            FastAPI routes (health + Slack mount)
   slack/          Bolt app, dedupe, normalization, event pipeline
   grok/           Grok client + orchestration loop + system prompt file
-  tools/          Pydantic tool I/O + dispatcher + backend HTTP client + mocks
+  tools/          Pydantic tool I/O + mappers + dispatcher + backend HTTP client + mocks
   models/         Shared pydantic models
   services/       Thread context builder + Slack reply helper
   config/         Settings
@@ -33,6 +33,7 @@ Copy `.env.example` to `.env` and fill values:
 - `XAI_API_KEY` (and optionally `XAI_BASE_URL`, `XAI_MODEL`)
 - `BACKEND_BASE_URL`
 - `BACKEND_GENERATE_REPORT_ENABLED` — set `true` to POST `generate_report` to the real backend (`false` uses mock-only for that tool)
+- `GROK_REQUEST_TIMEOUT_SECONDS`, `BACKEND_HTTP_TIMEOUT_SECONDS`, `ORCHESTRATION_TIMEOUT_SECONDS`
 - `LOG_LEVEL`
 
 ## Local run

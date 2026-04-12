@@ -35,6 +35,22 @@ class GenerateReportOutput(BaseModel):
         description="mock_only | real_http | real_http_failed",
     )
     http_status: int | None = None
+    operator_summary: str | None = Field(
+        default=None,
+        description="Short operator-facing summary from backend when provided.",
+    )
+    flags: dict[str, Any] | None = Field(
+        default=None,
+        description="Structured flags/warnings from backend for Slack display.",
+    )
+    request_log_summary: dict[str, Any] | None = Field(
+        default=None,
+        description="Sanitized request summary for structured logs (no full URLs).",
+    )
+    response_log_summary: dict[str, Any] | None = Field(
+        default=None,
+        description="Sanitized backend response summary for structured logs.",
+    )
 
 
 class CreateEstimateInput(BaseModel):

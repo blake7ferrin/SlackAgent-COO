@@ -12,6 +12,13 @@ from typing import Any
 
 from app.config.settings import Settings
 from app.tools.backend_client import BackendClient
+from app.tools.mappers.generate_report import (
+    build_backend_report_payload,
+    extract_flags_from_response,
+    extract_operator_summary_from_response,
+    log_summary_backend_response,
+    log_summary_report_request_payload,
+)
 from app.tools.schemas import (
     CreateEstimateInput,
     CreateEstimateOutput,
@@ -28,7 +35,7 @@ from app.tools.schemas import (
 logger = logging.getLogger(__name__)
 
 
-def _mock_report_result(inp: GenerateReportInput) -> GenerateReportOutput:
+def _mock_report_result(inp: GenerateReportInput, req_summary: dict[str, Any]) -> GenerateReportOutput:
     rid = f"rpt_{uuid.uuid4().hex[:12]}"
     return GenerateReportOutput(
         ok=True,
@@ -42,6 +49,10 @@ def _mock_report_result(inp: GenerateReportInput) -> GenerateReportOutput:
         raw={"mock": True, "thread_ts": inp.thread_ts, "channel_id": inp.channel_id},
         backend_mode="mock_only",
         http_status=None,
+        operator_summary=None,
+        flags=None,
+        request_log_summary=req_summary,
+        response_log_summary={"success": True, "mock": True},
     )
 
 
@@ -55,13 +66,9 @@ async def generate_report(
 
     **Replace** path `/v1/reports` and JSON body with your backend's schema.
     """
-    payload: dict[str, Any] = {
-        "thread_ts": inp.thread_ts,
-        "channel_id": inp.channel_id,
-        "job_summary": inp.job_summary,
-        "customer_hint": inp.customer_hint,
-        "image_urls": [str(u) for u in inp.image_urls],
-    }
+    payload = build_backend_report_payload(inp)
+    req_summary = log_summary_report_request_payload(payload)
+    logger.info("generate_report_request_summary %s", req_summary)
 
     if not settings.backend_generate_report_enabled:
         logger.info(
@@ -69,9 +76,16 @@ async def generate_report(
             inp.thread_ts,
             inp.channel_id,
         )
-        return _mock_report_result(inp)
+        return _mock_report_result(inp, req_summary)
 
     result = await backend.post_json_detailed("/v1/reports", payload)
+    resp_summary = log_summary_backend_response(
+        result.data,
+        success=result.success,
+        status_code=result.status_code,
+        error_tag=result.error_tag,
+    )
+    logger.info("generate_report_backend_response_summary %s", resp_summary)
     logger.info(
         "generate_report mode=real_http http_status=%s success=%s error=%s thread_ts=%s",
         result.status_code,
@@ -81,15 +95,22 @@ async def generate_report(
     )
 
     if result.success and result.data:
+        data = result.data
+        op_sum = extract_operator_summary_from_response(data)
+        flags = extract_flags_from_response(data)
         return GenerateReportOutput(
             ok=True,
-            report_id=str(result.data.get("report_id", "")) or None,
-            status=str(result.data.get("status", "")) or None,
-            pdf_url=str(result.data.get("pdf_url", "")) or None,
-            message=str(result.data.get("message", "")) or None,
-            raw=result.data,
+            report_id=str(data.get("report_id", "")) or None,
+            status=str(data.get("status", "")) or None,
+            pdf_url=str(data.get("pdf_url", "")) or None,
+            message=str(data.get("message", "")) or None,
+            raw=data,
             backend_mode="real_http",
             http_status=result.status_code,
+            operator_summary=op_sum,
+            flags=flags,
+            request_log_summary=req_summary,
+            response_log_summary=resp_summary,
         )
 
     return GenerateReportOutput(
@@ -104,6 +125,10 @@ async def generate_report(
         raw={"error": result.error_tag},
         backend_mode="real_http_failed",
         http_status=result.status_code,
+        operator_summary=None,
+        flags=None,
+        request_log_summary=req_summary,
+        response_log_summary=resp_summary,
     )
 
 

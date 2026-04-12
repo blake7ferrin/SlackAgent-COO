@@ -12,6 +12,7 @@ class GrokRunTrace:
     generate_report_result: dict[str, Any] | None = None
     last_tool_name: str | None = None
     last_tool_ok: bool | None = None
+    timed_out: bool = False
 
     def record_tool(self, name: str, result: dict[str, Any]) -> None:
         self.tools_called.append(name)

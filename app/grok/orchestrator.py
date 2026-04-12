@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
 
 from app.config.settings import Settings
 from app.grok.client import GrokClient, load_system_prompt
+from app.grok.errors import GrokTimeoutError
 from app.grok.run_trace import GrokRunTrace
 from app.models.slack_events import ThreadContext
 from app.tools.dispatcher import ToolDispatcher
@@ -61,8 +63,23 @@ class GrokOrchestrator:
             rounds += 1
             logger.info("grok_round_start round=%s", rounds)
             try:
-                text, tool_calls = await self._grok.chat_with_tools(
-                    messages=messages, tools=tools, tool_choice="auto"
+                text, tool_calls = await asyncio.wait_for(
+                    self._grok.chat_with_tools(
+                        messages=messages, tools=tools, tool_choice="auto"
+                    ),
+                    timeout=float(self._settings.grok_request_timeout_seconds),
+                )
+            except GrokTimeoutError:
+                logger.warning("grok_orchestration_timeout source=grok_client")
+                return (
+                    "The AI request timed out. Please try again in a moment.",
+                    trace,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("grok_orchestration_timeout source=wait_for")
+                return (
+                    "The AI request timed out. Please try again in a moment.",
+                    trace,
                 )
             except Exception:
                 msg = (
@@ -100,7 +117,14 @@ class GrokOrchestrator:
                     args = {}
                 logger.info("grok_tool_call name=%s", name)
                 try:
-                    result = await self._tools.dispatch(name, args)
+                    tool_timeout = float(self._settings.backend_http_timeout_seconds) + 15.0
+                    result = await asyncio.wait_for(
+                        self._tools.dispatch(name, args),
+                        timeout=tool_timeout,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning("tool_dispatch_timeout name=%s", name)
+                    result = {"ok": False, "error": "tool_timeout"}
                 except Exception:
                     logger.exception("tool_dispatch_failed name=%s", name)
                     result = {"ok": False, "error": "tool_dispatch_failed"}

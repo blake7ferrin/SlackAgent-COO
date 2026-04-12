@@ -19,7 +19,8 @@ class BackendClient:
 
     def __init__(self, settings: Settings) -> None:
         self._base = settings.backend_base_url.rstrip("/")
-        self._timeout = httpx.Timeout(30.0)
+        t = float(settings.backend_http_timeout_seconds)
+        self._timeout = httpx.Timeout(t)
 
     async def post_json_detailed(
         self, path: str, payload: dict[str, Any]
@@ -45,6 +46,9 @@ class BackendClient:
                 if not isinstance(data, dict):
                     return BackendPostResult(False, code, None, "non_object_json_response")
                 return BackendPostResult(True, code, data, None)
+        except httpx.TimeoutException:
+            logger.warning("backend_request_timeout path=%s", path)
+            return BackendPostResult(False, None, None, "timeout")
         except httpx.RequestError as e:
             logger.warning("backend_request_error path=%s err=%s", path, type(e).__name__)
             return BackendPostResult(False, None, None, "request_error")

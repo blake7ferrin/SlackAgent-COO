@@ -30,6 +30,11 @@ class Settings(BaseSettings):
 
     grok_max_tool_rounds: int = 6
 
+    # Timeouts (seconds)
+    grok_request_timeout_seconds: float = 120.0
+    backend_http_timeout_seconds: float = 60.0
+    orchestration_timeout_seconds: float = 180.0
+
 
 @lru_cache
 def get_settings() -> Settings:
