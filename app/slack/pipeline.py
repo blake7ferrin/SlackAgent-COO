@@ -9,8 +9,11 @@ from app.config.settings import Settings
 from app.grok.client import GrokClient
 from app.grok.orchestrator import GrokOrchestrator
 from app.models.slack_events import NormalizedSlackEvent
+from app.grok.run_trace import GrokRunTrace
 from app.services.context_builder import ContextBuilder
 from app.services.slack_replier import SlackReplyService
+from app.services.slack_reply_format import SlackReplyMode, format_slack_reply
+from app.services.thread_readiness import assess_thread_readiness
 from app.slack.dedup import RecentDedup
 from app.slack.normalize import enrich_file_shared, normalized_from_message_event
 from app.tools.backend_client import BackendClient
@@ -28,7 +31,7 @@ class OrchestrationPipeline:
         self._bot_user_id: str | None = None
 
         self._backend = BackendClient(settings)
-        self._tools = ToolDispatcher(self._backend)
+        self._tools = ToolDispatcher(self._backend, settings)
         self._grok = GrokClient(settings)
         self._orchestrator = GrokOrchestrator(settings, self._grok, self._tools)
 
@@ -84,8 +87,67 @@ class OrchestrationPipeline:
             len(thread.messages),
         )
 
-        reply = await self._orchestrator.run(thread=thread)
-        await replier.post_thread_reply(channel_id=norm.channel_id, thread_ts=str(thread_ts), text=reply)
+        readiness = assess_thread_readiness(thread)
+        if not readiness.ok:
+            body = format_slack_reply(SlackReplyMode.MISSING_INFORMATION, readiness.user_message)
+            posted = await replier.post_thread_reply(
+                channel_id=norm.channel_id, thread_ts=str(thread_ts), text=body
+            )
+            logger.info(
+                "slack_outcome mode=missing_information posted=%s channel=%s thread_ts=%s",
+                posted,
+                norm.channel_id,
+                thread_ts,
+            )
+            return
+
+        processing = format_slack_reply(
+            SlackReplyMode.PROCESSING,
+            "Reviewing the thread and coordinating the next step…",
+        )
+        await replier.post_thread_reply(
+            channel_id=norm.channel_id, thread_ts=str(thread_ts), text=processing
+        )
+
+        trace = GrokRunTrace()
+        reply, trace = await self._orchestrator.run(thread=thread, trace=trace)
+
+        rl = reply.lower()
+        if "generate_report" in trace.tools_called and trace.generate_report_result is not None:
+            gr = trace.generate_report_result
+            outcome_ok = bool(gr.get("ok"))
+            mode = SlackReplyMode.OUTCOME
+        elif "request_missing_data" in trace.tools_called:
+            mode = SlackReplyMode.MISSING_INFORMATION
+            outcome_ok = None
+        elif trace.tools_called and trace.last_tool_ok is False:
+            mode = SlackReplyMode.OUTCOME
+            outcome_ok = False
+        elif not trace.tools_called and (
+            "could not reach the ai service" in rl
+            or "did not get a usable response" in rl
+            or "maximum number of tool steps" in rl
+        ):
+            mode = SlackReplyMode.OUTCOME
+            outcome_ok = False
+        else:
+            mode = SlackReplyMode.OUTCOME
+            outcome_ok = True
+
+        body = format_slack_reply(mode, reply, outcome_ok=outcome_ok)
+        posted = await replier.post_thread_reply(
+            channel_id=norm.channel_id, thread_ts=str(thread_ts), text=body
+        )
+        logger.info(
+            "slack_outcome mode=%s posted=%s channel=%s thread_ts=%s tools=%s generate_report_backend=%s http_status=%s",
+            mode.value,
+            posted,
+            norm.channel_id,
+            thread_ts,
+            trace.tools_called,
+            (trace.generate_report_result or {}).get("backend_mode"),
+            (trace.generate_report_result or {}).get("http_status"),
+        )
 
     async def handle_normalized(
         self,

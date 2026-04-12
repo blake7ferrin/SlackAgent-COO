@@ -30,6 +30,11 @@ class GenerateReportOutput(BaseModel):
     pdf_url: str | None = None
     message: str | None = None
     raw: dict[str, Any] | None = None
+    backend_mode: str | None = Field(
+        default=None,
+        description="mock_only | real_http | real_http_failed",
+    )
+    http_status: int | None = None
 
 
 class CreateEstimateInput(BaseModel):

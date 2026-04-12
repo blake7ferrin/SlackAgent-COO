@@ -32,6 +32,7 @@ Copy `.env.example` to `.env` and fill values:
 - `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`
 - `XAI_API_KEY` (and optionally `XAI_BASE_URL`, `XAI_MODEL`)
 - `BACKEND_BASE_URL`
+- `BACKEND_GENERATE_REPORT_ENABLED` — set `true` to POST `generate_report` to the real backend (`false` uses mock-only for that tool)
 - `LOG_LEVEL`
 
 ## Local run
@@ -58,16 +59,15 @@ Expose `/slack/events` to the internet (ngrok/Cloudflare Tunnel/etc.) and config
 - **Deduping**: in-memory TTL dedupe for Slack retries (`event_id`, message keys, file ids).
 - **Channel noise control**: in `C…`/`G…` channels, the bot reacts to **thread replies** (threaded messages) or explicit `<@BOT>` mentions. DMs (`D…`) are handled for all messages.
 - **Images**: only **HTTPS** URLs are included; for Slack uploads, `url_private` is used when `mimetype` starts with `image/`.
+- **Report workflow pre-check**: before Grok runs, the thread must have usable notes and/or HTTPS images; images-only threads get a short context question.
+- **Slack reply modes**: *Missing information*, *Processing* (in-thread ping before Grok), then *Completed* / *Failed* on the final message.
 
 ## Replace mocks / wire real backend endpoints
 
 Edit `app/tools/implementations.py`:
 
-- adjust each `backend.post_json("/v1/...")` path
-- adjust JSON payload keys to match your backend
-- map response JSON fields into the Pydantic output models
-
-If the HTTP call fails, the tool falls back to a **mock** response so local Slack testing still works.
+- For **`generate_report`**: set `BACKEND_GENERATE_REPORT_ENABLED=true`, then adjust `POST /v1/reports` path and JSON body to match your backend. On HTTP/network failure the tool returns **`ok: false`** (no silent mock fallback).
+- Other tools still use HTTP with mock fallbacks when the backend is unreachable.
 
 ## Grok system prompt
 

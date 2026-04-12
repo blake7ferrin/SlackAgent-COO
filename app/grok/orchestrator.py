@@ -6,6 +6,7 @@ from typing import Any
 
 from app.config.settings import Settings
 from app.grok.client import GrokClient, load_system_prompt
+from app.grok.run_trace import GrokRunTrace
 from app.models.slack_events import ThreadContext
 from app.tools.dispatcher import ToolDispatcher
 from app.tools.registry import tool_definitions_openai
@@ -37,7 +38,8 @@ class GrokOrchestrator:
         self._grok = grok
         self._tools = tools
 
-    async def run(self, *, thread: ThreadContext) -> str:
+    async def run(self, *, thread: ThreadContext, trace: GrokRunTrace | None = None) -> tuple[str, GrokRunTrace]:
+        trace = trace or GrokRunTrace()
         system = load_system_prompt()
         user_block = _format_thread_for_prompt(thread)
 
@@ -63,16 +65,17 @@ class GrokOrchestrator:
                     messages=messages, tools=tools, tool_choice="auto"
                 )
             except Exception:
-                return (
+                msg = (
                     "I could not reach the AI service right now. "
                     "Please try again in a moment."
                 )
+                return msg, trace
 
             if not tool_calls:
                 if text:
                     logger.info("grok_final_text rounds=%s", rounds)
-                    return text
-                return "I did not get a usable response. Please try again."
+                    return text, trace
+                return "I did not get a usable response. Please try again.", trace
 
             assistant_msg: dict[str, Any] = {
                 "role": "assistant",
@@ -102,6 +105,8 @@ class GrokOrchestrator:
                     logger.exception("tool_dispatch_failed name=%s", name)
                     result = {"ok": False, "error": "tool_dispatch_failed"}
 
+                trace.record_tool(name, result)
+
                 messages.append(
                     {
                         "role": "tool",
@@ -112,5 +117,6 @@ class GrokOrchestrator:
 
         return (
             "I hit the maximum number of tool steps for one request. "
-            "Please continue in a new message with any missing details."
+            "Please continue in a new message with any missing details.",
+            trace,
         )

@@ -10,6 +10,7 @@ import logging
 import uuid
 from typing import Any
 
+from app.config.settings import Settings
 from app.tools.backend_client import BackendClient
 from app.tools.schemas import (
     CreateEstimateInput,
@@ -36,15 +37,21 @@ def _mock_report_result(inp: GenerateReportInput) -> GenerateReportOutput:
         pdf_url=None,
         message=(
             "Report generation accepted (mock). "
-            "Replace BackendClient POST /v1/reports with your real endpoint."
+            "Set BACKEND_GENERATE_REPORT_ENABLED=true to call the real backend."
         ),
         raw={"mock": True, "thread_ts": inp.thread_ts, "channel_id": inp.channel_id},
+        backend_mode="mock_only",
+        http_status=None,
     )
 
 
-async def generate_report(inp: GenerateReportInput, backend: BackendClient) -> GenerateReportOutput:
+async def generate_report(
+    inp: GenerateReportInput,
+    backend: BackendClient,
+    settings: Settings,
+) -> GenerateReportOutput:
     """
-    Calls the existing report engine via HTTP.
+    Calls the existing report engine via HTTP when BACKEND_GENERATE_REPORT_ENABLED is true.
 
     **Replace** path `/v1/reports` and JSON body with your backend's schema.
     """
@@ -55,18 +62,49 @@ async def generate_report(inp: GenerateReportInput, backend: BackendClient) -> G
         "customer_hint": inp.customer_hint,
         "image_urls": [str(u) for u in inp.image_urls],
     }
-    ok, data, err = await backend.post_json("/v1/reports", payload)
-    if ok and data:
+
+    if not settings.backend_generate_report_enabled:
+        logger.info(
+            "generate_report mode=mock_only backend_enabled=false thread_ts=%s channel=%s",
+            inp.thread_ts,
+            inp.channel_id,
+        )
+        return _mock_report_result(inp)
+
+    result = await backend.post_json_detailed("/v1/reports", payload)
+    logger.info(
+        "generate_report mode=real_http http_status=%s success=%s error=%s thread_ts=%s",
+        result.status_code,
+        result.success,
+        result.error_tag,
+        inp.thread_ts,
+    )
+
+    if result.success and result.data:
         return GenerateReportOutput(
             ok=True,
-            report_id=str(data.get("report_id", "")) or None,
-            status=str(data.get("status", "")) or None,
-            pdf_url=str(data.get("pdf_url", "")) or None,
-            message=str(data.get("message", "")) or None,
-            raw=data,
+            report_id=str(result.data.get("report_id", "")) or None,
+            status=str(result.data.get("status", "")) or None,
+            pdf_url=str(result.data.get("pdf_url", "")) or None,
+            message=str(result.data.get("message", "")) or None,
+            raw=result.data,
+            backend_mode="real_http",
+            http_status=result.status_code,
         )
-    logger.info("generate_report_fallback_mock err=%s", err)
-    return _mock_report_result(inp)
+
+    return GenerateReportOutput(
+        ok=False,
+        report_id=None,
+        status="error",
+        pdf_url=None,
+        message=(
+            "Report service is unavailable or returned an error. "
+            "Please try again shortly or contact ops if this persists."
+        ),
+        raw={"error": result.error_tag},
+        backend_mode="real_http_failed",
+        http_status=result.status_code,
+    )
 
 
 async def create_estimate(inp: CreateEstimateInput, backend: BackendClient) -> CreateEstimateOutput:

@@ -31,5 +31,10 @@ class SlackReplyService:
                 resp.get("error"),
             )
             return False
-        logger.info("slack_reply_posted channel=%s thread_ts=%s", channel_id, thread_ts)
+        logger.info(
+            "slack_reply_posted channel=%s thread_ts=%s ts=%s",
+            channel_id,
+            thread_ts,
+            resp.get("ts"),
+        )
         return True
