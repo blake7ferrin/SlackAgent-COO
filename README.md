@@ -38,13 +38,21 @@ Copy `.env.example` to `.env` and fill values:
 
 ## Local run
 
-Create a virtualenv, install dependencies, run uvicorn:
+On Debian/Ubuntu, install the venv module once if `python3 -m venv` fails (`ensurepip is not available`):
 
 ```bash
-python3.11 -m venv .venv
+sudo apt-get update && sudo apt-get install -y python3.12-venv
+```
+
+Create a virtualenv, install dependencies, run uvicorn (Python **3.11+** is fine; this repo is tested on **3.12** in CI-like environments):
+
+```bash
+python3 -m venv .venv
 source .venv/bin/activate
+pip install -U pip
 pip install -r requirements.txt
 cp .env.example .env
+# Edit .env with real Slack + xAI credentials before expecting Slack features to work.
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 

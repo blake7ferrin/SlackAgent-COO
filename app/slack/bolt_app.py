@@ -4,6 +4,7 @@ import logging
 
 from slack_bolt.async_app import AsyncApp
 from slack_bolt.authorization import AuthorizeResult
+from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 
 from app.config.settings import Settings
@@ -19,6 +20,12 @@ async def resolve_bot_user_id(settings: Settings) -> str | None:
         auth = await client.auth_test()
         if auth.get("ok"):
             return str(auth.get("user_id"))
+    except SlackApiError as exc:
+        err = str(exc.response.get("error") or "") if exc.response is not None else ""
+        if err == "invalid_auth":
+            logger.warning("slack_auth_test_invalid_token")
+        else:
+            logger.exception("slack_auth_test_failed")
     except Exception:
         logger.exception("slack_auth_test_failed")
     return None
