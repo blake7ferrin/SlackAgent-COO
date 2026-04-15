@@ -81,7 +81,14 @@ class GrokOrchestrator:
                     "The AI request timed out. Please try again in a moment.",
                     trace,
                 )
-            except Exception:
+            except Exception as exc:
+                logger.exception(
+                    "grok_orchestration_failed error_type=%s error=%s model=%s base_url=%s",
+                    type(exc).__name__,
+                    str(exc),
+                    self._grok.model,
+                    self._settings.xai_base_url,
+                )
                 msg = (
                     "I could not reach the AI service right now. "
                     "Please try again in a moment."
