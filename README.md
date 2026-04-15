@@ -27,6 +27,8 @@ main.py           FastAPI entrypoint + uvicorn hook
 
 ## Configuration
 
+### Option A: `.env` file (local)
+
 Copy `.env.example` to `.env` and fill values:
 
 - `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`
@@ -35,6 +37,22 @@ Copy `.env.example` to `.env` and fill values:
 - `BACKEND_GENERATE_REPORT_ENABLED` — set `true` to POST `generate_report` to the real backend (`false` uses mock-only for that tool)
 - `GROK_REQUEST_TIMEOUT_SECONDS`, `BACKEND_HTTP_TIMEOUT_SECONDS`, `ORCHESTRATION_TIMEOUT_SECONDS`
 - `LOG_LEVEL`
+
+### Option B: [Doppler](https://www.doppler.com/) (recommended for teams / deploys)
+
+This app only reads **environment variables** (via pydantic-settings). Doppler injects them at process start, so you do not need a `.env` file on the server.
+
+1. Install the [Doppler CLI](https://docs.doppler.com/docs/install-cli) and run `doppler login` / `doppler setup` in the repo to link a project and config (for example `dev` or `prd`).
+2. In the Doppler dashboard, add the same keys as in `.env.example` (use **uppercase** names: `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `XAI_API_KEY`, etc.).
+3. Run the app through Doppler:
+
+```bash
+doppler run -- uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Environment variables always override values from `.env` (pydantic-settings). To skip reading `.env` entirely (for example when only Doppler injects config), set `LOAD_DOTENV=0` in **Doppler or the shell** (not inside `.env` — that file is not read yet when this flag is applied).
+
+Use the same keys as Option A in Doppler; you do not need a `.env` file on the machine if everything is in Doppler.
 
 ## Local run
 
