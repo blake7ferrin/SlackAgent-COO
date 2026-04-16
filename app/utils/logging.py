@@ -1,20 +1,31 @@
+import json
 import logging
 import sys
 from typing import Any
 
 
+class _JSONFormatter(logging.Formatter):
+    """Single-line JSON log entries for structured log ingestion (Railway, Datadog, etc.)."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        entry: dict[str, Any] = {
+            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
+        }
+        if record.exc_info and record.exc_info[1]:
+            entry["exception"] = self.formatException(record.exc_info)
+        return json.dumps(entry, default=str)
+
+
 def setup_logging(level: str = "INFO") -> None:
-    """Configure structured-ish JSON-friendly logging for the process."""
+    """Configure structured JSON logging for production."""
     root = logging.getLogger()
     root.handlers.clear()
 
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(
-        logging.Formatter(
-            fmt="%(asctime)s %(levelname)s %(name)s %(message)s",
-            datefmt="%Y-%m-%dT%H:%M:%S%z",
-        )
-    )
+    handler.setFormatter(_JSONFormatter())
     root.addHandler(handler)
     root.setLevel(level.upper())
 
@@ -22,6 +33,7 @@ def setup_logging(level: str = "INFO") -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("openai").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 
 def redact_secrets(obj: Any) -> Any:

@@ -27,17 +27,29 @@ class Settings(BaseSettings):
 
     xai_api_key: SecretStr
     xai_base_url: str = "https://api.x.ai/v1"
-    xai_model: str = "grok-2-latest"
+    xai_model: str = "grok-4-latest"
 
     backend_base_url: str = "http://localhost:8080"
     # When false, generate_report uses local mock only (no HTTP). When true, POST to backend; mock on failure if configured.
     backend_generate_report_enabled: bool = False
 
+    environment: str = "production"
     log_level: str = "INFO"
     host: str = "0.0.0.0"
     port: int = 8000
 
     grok_max_tool_rounds: int = 6
+
+    # Retry settings for xAI API calls
+    grok_max_retries: int = 3
+    grok_retry_base_delay: float = 1.0
+
+    # Retry settings for backend HTTP calls
+    backend_max_retries: int = 2
+    backend_retry_base_delay: float = 0.5
+
+    # Max thread messages to send to Grok (controls token cost / latency)
+    max_thread_messages: int = 50
 
     # Timeouts (seconds)
     grok_request_timeout_seconds: float = 120.0

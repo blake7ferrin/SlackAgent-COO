@@ -1,5 +1,5 @@
 """
-Format concise Slack text for generate_report outcomes (operator summary + status + flags).
+Format concise Slack text for generate_report outcomes.
 """
 
 from __future__ import annotations
@@ -16,9 +16,7 @@ def _truncate(s: str, max_len: int) -> str:
 
 
 def format_generate_report_completed_body(gr: dict[str, Any]) -> str:
-    """
-    Build the body under the OUTCOME header (no mode prefix — pipeline adds that).
-    """
+    """Build the body under the OUTCOME header."""
     lines: list[str] = []
     op = gr.get("operator_summary")
     if isinstance(op, str) and op.strip():
@@ -27,17 +25,13 @@ def format_generate_report_completed_body(gr: dict[str, Any]) -> str:
     rid = gr.get("report_id")
     st = gr.get("status")
     if rid:
-        lines.append(f"*Report ID:* `{rid}`")
-    if st:
+        lines.append(f"*Report:* `{rid}`  |  *Status:* {st or 'submitted'}")
+    elif st:
         lines.append(f"*Status:* {st}")
 
     pdf = gr.get("pdf_url")
     if isinstance(pdf, str) and pdf.strip() and pdf.startswith("https://"):
-        lines.append(f"*PDF:* {pdf}")
-
-    msg = gr.get("message")
-    if isinstance(msg, str) and msg.strip() and not lines:
-        lines.append(_truncate(msg, 400))
+        lines.append(f"<{pdf}|View PDF>")
 
     flags = gr.get("flags")
     if isinstance(flags, dict) and flags:
@@ -49,29 +43,40 @@ def format_generate_report_completed_body(gr: dict[str, Any]) -> str:
 
     backend_mode = gr.get("backend_mode")
     if backend_mode == "mock_only":
-        lines.append("_Mock mode — backend report API not called._")
+        lines.append("_Mock mode — report API not called. Set BACKEND_GENERATE_REPORT_ENABLED=true for production._")
+
+    msg = gr.get("message")
+    if isinstance(msg, str) and msg.strip() and not lines:
+        lines.append(_truncate(msg, 400))
 
     if not lines:
-        return "Report step finished."
+        return "Report submitted."
 
     return "\n".join(lines)
 
 
 def format_generate_report_failed_body(gr: dict[str, Any]) -> str:
-    """Concise failure text for Slack (under Failed header)."""
-    lines: list[str] = []
+    """Concise failure text for Slack."""
     msg = gr.get("message")
     if isinstance(msg, str) and msg.strip():
-        lines.append(_truncate(msg, 350))
+        text = _truncate(msg, 350)
+    else:
+        text = "The report service didn't respond."
+
     http = gr.get("http_status")
-    if http is not None:
-        lines.append(f"*HTTP:* {http}")
     raw = gr.get("raw")
+    error_tag = None
     if isinstance(raw, dict) and raw.get("error"):
-        lines.append(f"*Error:* `{raw.get('error')}`")
-    rs = gr.get("response_log_summary")
-    if isinstance(rs, dict) and rs.get("error_tag"):
-        lines.append(f"*Backend:* {rs.get('error_tag')}")
-    if not lines:
-        return "Report generation failed."
-    return "\n".join(lines)
+        error_tag = raw["error"]
+
+    details: list[str] = []
+    if http is not None:
+        details.append(f"HTTP {http}")
+    if error_tag:
+        details.append(str(error_tag))
+
+    if details:
+        text += f"\n_({', '.join(details)})_"
+
+    text += "\nRetry in a moment, or flag your dispatcher if it keeps failing."
+    return text

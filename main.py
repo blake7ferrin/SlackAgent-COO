@@ -29,11 +29,19 @@ async def _startup() -> None:
     bot_user_id = await resolve_bot_user_id(settings)
     pipeline.set_bot_user_id(bot_user_id)
     logger.info(
-        "app_startup host=%s port=%s bot_user_id=%s",
+        "app_startup host=%s port=%s bot_user_id=%s env=%s model=%s",
         settings.host,
         settings.port,
         bot_user_id or "unknown",
+        settings.environment,
+        settings.xai_model,
     )
+
+
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    await pipeline.close()
+    logger.info("app_shutdown graceful")
 
 
 if __name__ == "__main__":
