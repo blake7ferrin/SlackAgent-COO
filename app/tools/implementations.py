@@ -149,13 +149,12 @@ async def create_estimate(inp: CreateEstimateInput, backend: BackendClient) -> C
             message=str(data.get("message", "")) or None,
             raw=data,
         )
-    eid = f"est_{uuid.uuid4().hex[:12]}"
     return CreateEstimateOutput(
-        ok=True,
-        estimate_id=eid,
-        status="draft_mock",
-        message=f"Estimate stubbed (backend unavailable: {err}).",
-        raw={"mock": True},
+        ok=False,
+        estimate_id=None,
+        status="error",
+        message=f"Could not reach the estimates service ({err}). Please retry in a moment.",
+        raw={"error": err},
     )
 
 
@@ -176,13 +175,12 @@ async def housecall_pro_sync(inp: HousecallProSyncInput, backend: BackendClient)
             message=str(data.get("message", "")) or None,
             raw=data,
         )
-    ref = f"hcp_{uuid.uuid4().hex[:10]}"
     return HousecallProSyncOutput(
-        ok=True,
-        external_ref=ref,
-        status="queued_mock",
-        message=f"Housecall Pro sync stubbed (backend unavailable: {err}).",
-        raw={"mock": True},
+        ok=False,
+        external_ref=None,
+        status="error",
+        message=f"Could not reach Housecall Pro sync service ({err}). Please retry in a moment.",
+        raw={"error": err},
     )
 
 
@@ -203,13 +201,12 @@ async def flag_opportunity(inp: FlagOpportunityInput, backend: BackendClient) ->
             message=str(data.get("message", "")) or None,
             raw=data,
         )
-    fid = f"flg_{uuid.uuid4().hex[:10]}"
     return FlagOpportunityOutput(
-        ok=True,
-        flag_id=fid,
-        status="logged_mock",
-        message=f"Opportunity flag stubbed (backend unavailable: {err}).",
-        raw={"mock": True},
+        ok=False,
+        flag_id=None,
+        status="error",
+        message=f"Could not reach the flagging service ({err}). Please retry in a moment.",
+        raw={"error": err},
     )
 
 

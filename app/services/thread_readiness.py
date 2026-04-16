@@ -1,5 +1,8 @@
 """
 Lightweight pre-check before invoking Grok: enough thread signal for report workflow.
+
+The bar is intentionally low — Grok itself can ask for more info if needed.
+We only block completely empty threads (no text, no images at all).
 """
 
 from __future__ import annotations
@@ -45,15 +48,20 @@ def _is_usable_note_line(text: str) -> bool:
     if _BOTISH.match(raw):
         return False
     norm = _normalize_user_text(raw)
-    if len(norm) < 20 and len(norm.split()) < 5:
+    # Low bar: even short messages like "AC leaking" or "furnace out" are useful.
+    # Grok can ask for more detail if needed.
+    if len(norm) < 3:
         return False
     return True
 
 
 def assess_thread_readiness(thread: ThreadContext) -> ThreadReadiness:
     """
-    - usable notes: substantive user-authored text in the thread (not placeholders).
+    - usable notes: any non-placeholder user text in the thread.
     - HTTPS images: any image_urls collected on messages (Slack file metadata only).
+
+    Only blocks truly empty threads. Thin threads (images-only, short notes)
+    are passed through to Grok, which can decide to ask follow-up questions.
     """
     has_images = any(bool(m.image_urls) for m in thread.messages)
     usable = False
@@ -66,49 +74,21 @@ def assess_thread_readiness(thread: ThreadContext) -> ThreadReadiness:
 
     if not usable and not has_images:
         msg = (
-            "I need job notes, readings, or at least one photo in this thread to generate a report. "
-            "What system or issue are we documenting?"
+            "Hey — I need something to work with. Drop some job notes, "
+            "readings, or photos in this thread and I'll take it from there."
         )
         logger.info(
-            "readiness_outcome %s",
-            {
-                "ok": False,
-                "reason": "no_notes_no_images",
-                "channel_id": thread.channel_id,
-                "thread_ts": thread.thread_ts,
-                "has_usable_notes": False,
-                "has_https_images": False,
-            },
+            "readiness_outcome reason=no_notes_no_images channel=%s thread_ts=%s",
+            thread.channel_id,
+            thread.thread_ts,
         )
         return ThreadReadiness(False, False, False, msg, "no_notes_no_images")
 
-    if has_images and not usable:
-        msg = (
-            "I see photo(s) but no job context yet. In one or two sentences: what was done or observed, "
-            "what’s wrong (if anything), and customer or site name if you have it?"
-        )
-        logger.info(
-            "readiness_outcome %s",
-            {
-                "ok": False,
-                "reason": "images_only_no_context",
-                "channel_id": thread.channel_id,
-                "thread_ts": thread.thread_ts,
-                "has_usable_notes": False,
-                "has_https_images": True,
-            },
-        )
-        return ThreadReadiness(False, True, True, msg, "images_only_no_context")
-
     logger.info(
-        "readiness_outcome %s",
-        {
-            "ok": True,
-            "reason": "ok",
-            "channel_id": thread.channel_id,
-            "thread_ts": thread.thread_ts,
-            "has_usable_notes": usable,
-            "has_https_images": has_images,
-        },
+        "readiness_outcome reason=ok channel=%s thread_ts=%s notes=%s images=%s",
+        thread.channel_id,
+        thread.thread_ts,
+        usable,
+        has_images,
     )
     return ThreadReadiness(True, usable, has_images, "", "ok")

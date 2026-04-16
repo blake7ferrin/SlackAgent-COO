@@ -40,6 +40,10 @@ class OrchestrationPipeline:
         self._grok = GrokClient(settings)
         self._orchestrator = GrokOrchestrator(settings, self._grok, self._tools)
 
+    async def close(self) -> None:
+        """Shutdown hook — release persistent connections."""
+        await self._backend.close()
+
     def set_bot_user_id(self, bot_user_id: str | None) -> None:
         self._bot_user_id = bot_user_id
 
@@ -108,7 +112,7 @@ class OrchestrationPipeline:
 
         processing = format_slack_reply(
             SlackReplyMode.PROCESSING,
-            "Reviewing the thread and coordinating the next step…",
+            "Looking at the thread…",
         )
         await replier.post_thread_reply(
             channel_id=norm.channel_id, thread_ts=str(thread_ts), text=processing
@@ -129,10 +133,11 @@ class OrchestrationPipeline:
                 self._settings.orchestration_timeout_seconds,
             )
             reply = (
-                "This request took too long and timed out. "
-                "Please try again with a shorter thread or fewer attachments."
+                "That took too long — sorry about that. "
+                "Try again, or break it into a shorter message."
             )
 
+        # Determine reply mode and formatting
         rl = reply.lower()
         if "generate_report" in trace.tools_called and trace.generate_report_result is not None:
             gr = trace.generate_report_result
@@ -151,17 +156,18 @@ class OrchestrationPipeline:
         elif trace.timed_out or (
             not trace.tools_called
             and (
-                "could not reach the ai service" in rl
-                or "did not get a usable response" in rl
-                or "maximum number of tool steps" in rl
-                or "timed out" in rl
+                "couldn't connect" in rl
+                or "wasn't able to process" in rl
+                or "processing steps" in rl
+                or "too long" in rl
             )
         ):
             mode = SlackReplyMode.OUTCOME
             outcome_ok = False
         else:
+            # Normal conversational response or successful tool use
             mode = SlackReplyMode.OUTCOME
-            outcome_ok = True
+            outcome_ok = True if trace.tools_called else None
 
         body = format_slack_reply(mode, reply, outcome_ok=outcome_ok)
         posted = await replier.post_thread_reply(
